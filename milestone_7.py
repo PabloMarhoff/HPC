@@ -8,20 +8,14 @@ Created on Wed Jul 28 11:38:04 2021
 from mpi4py import MPI
 from mpi_helper import save_mpiio
 import numpy as np
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-from matplotlib.ticker import LinearLocator
-import matplotlib as mpl
 import sys
-mpl.rcParams['figure.dpi'] = 200
-
 
 
 Nch = 9 # Anzahl Channel
 Ny = 300 # Höhe des Gitters
 Nx = 300 # Breite des Gitters
 
-# Anzahl Prozessoren in y- bzw. x-Richtung (erstmal y_pgrid=x_pgrid)
+# Anzahl Prozessoren in y- bzw. x-Richtung
 # beide müssen >= 2 sein
 y_pgrid = 6
 x_pgrid = 6
@@ -227,98 +221,27 @@ def apply_boundary(f, f_copy, WALLS):
 
 
 
-###############################################################################
-def mass_check_simple(old_pdf, new_pdf, timestep):
-    '''
-    überprüft, ob Masse zwischen zwei Zeitschritten erhalten bleibt
-    IN:  alte PDF, neue PDF
-    OUT: True (wenn Masse erhalten geblieben)
-    '''
-    old_mass = np.sum(density(old_pdf[:, 1:-1, 1:-1]))
-    new_mass = np.sum(density(new_pdf[:, 1:-1, 1:-1]))
-    # Toleranz
-    if np.abs(old_mass - new_mass) > 1e-08:
-        print("#############################")
-        print(f"FEHLER bei t={timestep}! mass_diff = {old_mass-new_mass}")
-        print("Simulation ist möglicherweise noch ausreichend genau...")
-        return False
-    return True
-
-def mass_check(old_pdf, new_pdf, timestep, ymin, ymax, xmin, xmax):
-    '''
-    überprüft, ob Masse zwischen zwei Zeitschritten erhalten bleibt
-    IN:  alte PDF, neue PDF
-         ymin==    1, wenn linke Wand aktiv
-         ymax== Ny-1, wenn rechte Wand aktiv
-         xmin, xmax   analog
-    OUT: True (wenn Masse erhalten geblieben)
-    '''
-    #    ...   ...   ...  ...
-    #   (0,2) (1,2) (2,2) ...
-    #   (0,1) (1,1) (2,1) ...
-    #   (0,0) (1,0) (2,0) ...
-    y_quads = 15
-    x_quads = 18
-    string = ''
-    for y in np.arange(y_quads):
-        for x in np.arange(x_quads):
-            # QUADRANTEN
-            # linke Grenze                                  + 0 oder 1 abhängig von linker Wand
-            left  = int(round((xmax-xmin)/x_quads *  x   )) + xmin
-            # rechte Grenze
-            right = int(round((xmax-xmin)/x_quads * (x+1))) + xmin
-            # untere Grenze                                 + 0 oder 1 abhängig von unterer Wand
-            lower = int(round((ymax-ymin)/y_quads * y    )) + ymin
-            # obere Grenze
-            upper = int(round((ymax-ymin)/y_quads * (y+1))) + ymin
-            old_mass = np.sum(density(old_pdf[:, lower:upper, left:right]))
-            new_mass = np.sum(density(new_pdf[:, lower:upper, left:right]))
-            # Toleranz
-            if np.abs(old_mass - new_mass) > 1e-06:
-                string += '(x=' + str(x) + ',' + str(y) + ') bzw. ('+str(left)+':'+str(right) + ',' + str(lower) + ':'+str(upper) + '), mass_diff = ' + str(old_mass-new_mass) + '\n'
-    if string:
-        print(f"FEHLER bei t={timestep}!")
-        print(string)
-    return True
-###############################################################################
-
-
-
-
 
 # (1) AUSGANGSZUSTAND
 den_grid, vel_field, f, ymin, ymax, xmin, xmax, WALLS = init()
 
-
-
-f_start = f.copy()
-
-
-
 for step in np.arange(150001):
     old_f = f.copy()
 
-# (4) STREAMING
+# (2) STREAMING
     f = streaming_step(f, WALLS)
 
-# (5) APPLY BOUNDARY
+# (3) APPLY BOUNDARY
     f = apply_boundary(f, old_f, WALLS)
 
-# (1) MOMENTUM UPDATE
+# (4.1) MOMENTUM UPDATE
     den_grid = density(f) # 1. rho
     vel_field = velocity(f) # local average velocity
-# (2) EQUILIBRIUM    (ausgeglichenen Zustand des Systems berechnen)
+# (4.2) EQUILIBRIUM    (ausgeglichenen Zustand des Systems berechnen)
     f_eq = f_equilib(den_grid, vel_field, ymin, ymax, xmin, xmax)
-# (3) RELAXATION / COLLISION
+# (4.3) RELAXATION / COLLISION
     f = relaxation(f, f_eq)
     
     if step in [600, 1000, 3000, 5000, 10000, 300000, 50000, 70000, 150000]:
         save_mpiio(cartcomm, "vel_fields/ux%d_%d_%d.npy" % (step, Nx, Ny), vel_field[0, 1:-1, 1:-1])
         save_mpiio(cartcomm, "vel_fields/uy%d_%d_%d.npy" % (step, Nx, Ny), vel_field[1, 1:-1, 1:-1])
-
-
-mass_check_simple(f_start, f, -1)
-
-
-
-
