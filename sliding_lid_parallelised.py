@@ -18,8 +18,8 @@ if not os.path.exists(path):
 ###############################################################################
 # ADJUSTABLE PARAMETERS
 
-Ny = 300 # Höhe des Gitters
-Nx = 300 # Breite des Gitters
+Ny = 300 # height of the grid
+Nx = 300 # width of the grid
 
 # subdivision of the grid y- and x-direction
 # MUST correspond to the number of allocated processors
@@ -58,13 +58,13 @@ comm = MPI.COMM_WORLD
 rank = comm.Get_rank() # eigene ID des aktuellen Prozesses
 size = comm.Get_size() # Gesamtanzahl an Prozessen
 if size < 4:
-    print("Größere Anzahl an Prozessen wählen (mind.4) ")
+    print("Number of processors must be at least 4!")
     sys.exit()
 if rank == 0 and size != y_pgrid * x_pgrid:
-    print("Anzahl Prozessoren ({size}) != y_pgrid({y_pgrid}) * x_pgrid({x_pgrid}). Eines von beiden anpassen!")
+    print(f"Anzahl Prozessoren ({size}) != y_pgrid({y_pgrid}) * x_pgrid({x_pgrid}). Eines von beiden anpassen!")
     sys.exit()
-# Aufteilung des Gitters die mehrere Prozessoren
-# z. B. bei 3 x 3
+# subdivision of the sub-grids
+# i.e. with x_pgrid = y_pgrid = 3
 #   (Rank 6) (Rank 7) (Rank 8)
 #   (Rank 3) (Rank 4) (Rank 5)
 #   (Rank 0) (Rank 1) (Rank 2)
@@ -82,7 +82,7 @@ sd_lower = cartcomm.Shift(0,-1)
 # INITIAL STATE
 def init():
     
-    # Jeder Prozessor muss wissen, ob *und an welchem* Rand er sich befindet
+    # every process must know, if *and at which* boundary it lays
     WALLS = [False, False, False, False]
     if sd_right[1] <= -1:
         WALLS[2] = True
@@ -93,7 +93,7 @@ def init():
     if sd_lower[1] <= -1:
         WALLS[1] = True
 
-    # GLOBALE GRENZEN DER LOKALEN GITTER (Sub-Grids)
+    # GLOBAL BOUNDARIES OF THE SUB-GRIDS
     # rechts
     xmax = int(round(Nx / x_pgrid * ((rank % x_pgrid) +1) ))
     # oben
@@ -102,12 +102,12 @@ def init():
     xmin = int(round(Nx / x_pgrid * (rank % x_pgrid) ))
     # unten
     ymin = int(round(Ny / y_pgrid * int(rank / x_pgrid) ))
-    # unclear if Sub-Grids are correct? uncomment the following lines:
+    # info about the Sub-Grids wanted?? uncomment the following lines:
     # print(rank, WALLS, "\n", sd_left, "\n", sd_lower, "\n", sd_right, "\n", sd_upper, "\ny=[", ymin, ymax, "]  x=[", xmin, xmax,"]")
     # sys.exit()
 
-    # INITIALISIERE f
-    # Größe des Sub-Grids + 2 für Ghost-Nodes/Wände
+    # INITIALISE f
+    # size of sub-grid + 2 for ghost-nodes/layers
     f = np.ones((Nch, ymax-ymin+2, xmax-xmin+2))
     
     for channel in np.arange(9):
@@ -188,19 +188,19 @@ def apply_boundary(f, f_copy, WALLS):
 # (3.1) MOMENTUM UPDATE
 def density(f):
     '''
-    RHO    berechnet die Dichte von jedem Gitterpunkt (= Summe der Geschwindigkeiten (0..9))
-            IN:  f(v,y,x)                    (GESCHWINDIGKEITEN, y, x)
-            OUT: density of each gridpoint   (y, x)
+    RHO    calculates density of every gridpoint (= sum of velocities (0..9))
+            IN:  f(v,y,x)
+            OUT: density of each gridpoint (y, x)
     '''
-    den_grid = np.einsum('ijk->jk',f)   # identisch zu np.sum(f, axis=0)
+    den_grid = np.einsum('ijk->jk',f)
     return den_grid
 
 
 def velocity(f):
     '''
-    v      berechnet das Geschwindigkeitsfeld für die Gitterpunkte
+    v      calculates velocity-field for every gridpoint
             IN:  f(v,y,x)
-            OUT: Geschwindigkeitsfeld (getrennt nach x- und y-Komponente)
+            OUT: velocity field (divided by x- and y-component)
     '''
     vel_field = (1.0/density(f)) * np.einsum('in,ijk->njk', c.T, f)
 
@@ -255,7 +255,7 @@ def mass_check_simple(old_pdf, new_pdf):
 ###############################################################################
 ###############################################################################
 
-# AUSGANGSZUSTAND
+# INITIAL STATE
 den_grid, vel_field, f, ymin, ymax, xmin, xmax, WALLS = init()
 
 f_start = f.copy()
