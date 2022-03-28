@@ -9,6 +9,11 @@ from mpi4py import MPI
 from mpi_helper import save_mpiio
 import numpy as np
 import sys
+import os
+
+path = 'vel_fields'
+if not os.path.exists(path):
+    os.makedirs(path)
 
 ###############################################################################
 # ADJUSTABLE PARAMETERS
@@ -16,8 +21,9 @@ import sys
 Ny = 300 # Höhe des Gitters
 Nx = 300 # Breite des Gitters
 
-# Anzahl Prozessoren in y- bzw. x-Richtung (erstmal y_pgrid=x_pgrid)
-# beide müssen >= 2 sein
+# subdivision of the grid y- and x-direction
+# MUST correspond to the number of allocated processors
+# MUST be >= 2
 y_pgrid = 6
 x_pgrid = 6
 
@@ -26,12 +32,13 @@ x_pgrid = 6
 W_SPEED =  [0.0,       0.0,       0.0,   0.1] # movement-speeds of the walls
 #direction: +y (up)   +x (right)   +y      +x
 
-# 0 < omega < 2 ("omega nicht größer als 1,7!") entsprichst Viskosität = 1/3 * (1/omega - 1/2)
-# d.h. je kleiner omega, desto dickflüssiger
+# 0 < omega <= 1.7 (entsprichst viscosity = 1/3 * (1/omega - 1/2))
+# smaller omega -> fluid is thicker
 # omega = 0.891 (Wasser)
 OMEGA = 1.7
 
-
+NSTEPS = 100000
+SAVEPOINTS = [600, 1000, 3000, 5000, 10000, 300000, 50000, 70000, 100000]
 
 ###############################################################################
 ###############################################################################
@@ -254,7 +261,7 @@ den_grid, vel_field, f, ymin, ymax, xmin, xmax, WALLS = init()
 f_start = f.copy()
 
 
-for step in np.arange(100001):
+for step in np.arange(NSTEPS+1):
     old_f = f.copy()
 # (1) STREAMING
     f = streaming_step(f, WALLS)
@@ -268,7 +275,7 @@ for step in np.arange(100001):
 # (3.3) RELAXATION / COLLISION
     f = relaxation(f, f_eq)
     
-    if step in [600, 1000, 3000, 5000, 10000, 300000, 50000, 70000, 100000]:
+    if step in SAVEPOINTS:
         save_mpiio(cartcomm, "vel_fields/ux%d_%d_%d.npy" % (step, Nx, Ny), vel_field[0, 1:-1, 1:-1])
         save_mpiio(cartcomm, "vel_fields/uy%d_%d_%d.npy" % (step, Nx, Ny), vel_field[1, 1:-1, 1:-1])
 
