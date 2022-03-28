@@ -52,6 +52,3 @@ for step in np.arange(NSTEPS+1):
             plt.show()
     except OSError:
         pass
-
-
-
